@@ -25,6 +25,7 @@ export function generateDungeon(width: number, height: number, seed: string): Du
   const tiles = createGrid<Tile>(width, height, () => ({ glyph: "#", walkable: false, blocksSight: true }));
   const seen = createGrid(width, height, () => false);
   const visible = createGrid(width, height, () => false);
+  const light = createGrid(width, height, () => 0);
 
   const rooms: Room[] = [];
   const roomCount = 6 + Math.floor(prng.next() * 7); // 6-12
@@ -56,7 +57,7 @@ export function generateDungeon(width: number, height: number, seed: string): Du
   const exit = { x: exitRoom.x + Math.floor(exitRoom.width / 2), y: exitRoom.y + Math.floor(exitRoom.height / 2) };
   tiles[exit.y][exit.x] = { glyph: ">", walkable: true, blocksSight: false, tags: ["exit"] };
 
-  const dungeon: Dungeon = { width, height, tiles, seen, visible, biome };
+  const dungeon: Dungeon = { width, height, tiles, seen, visible, light, biome };
   return { dungeon, rooms, spawn, exit, biome };
 }
 

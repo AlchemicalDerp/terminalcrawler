@@ -84,12 +84,23 @@ function canMoveTo(state: GameState, pos: Vec2): boolean {
   return true;
 }
 
+const PLAYER_FOV_RADIUS = 9;
+
 export function reveal(state: GameState): void {
-  const fov = computeFOV(state.dungeon, state.player.position, { radius: 8 });
-  state.dungeon.visible = fov;
+  const result = computeFOV(state.dungeon, state.player.position, { radius: PLAYER_FOV_RADIUS });
+  state.dungeon.visible = result.visible;
   for (let y = 0; y < state.dungeon.height; y++) {
     for (let x = 0; x < state.dungeon.width; x++) {
-      if (fov[y][x]) state.dungeon.seen[y][x] = true;
+      if (result.visible[y][x]) {
+        state.dungeon.seen[y][x] = true;
+        const dist = result.distance[y][x];
+        const brightness = Number.isFinite(dist)
+          ? Math.max(0, 1 - dist / (PLAYER_FOV_RADIUS + 0.5))
+          : 0;
+        state.dungeon.light[y][x] = brightness;
+      } else {
+        state.dungeon.light[y][x] = 0;
+      }
     }
   }
 }
@@ -97,7 +108,7 @@ export function reveal(state: GameState): void {
 export function updateMonsterFOV(state: GameState): void {
   const overlays: Record<string, boolean[][]> = {};
   for (const monster of state.monsters.values()) {
-    overlays[monster.id] = computeFOV(state.dungeon, monster.position, { radius: monster.vision });
+    overlays[monster.id] = computeFOV(state.dungeon, monster.position, { radius: monster.vision }).visible;
   }
   state.overlays.monsterFOV = overlays;
 }

@@ -98,12 +98,15 @@ export class Renderer {
 
   private computeGlyph(state: GameState, pos: Vec2): string {
     const { dungeon } = state;
-    if (!dungeon.visible[pos.y][pos.x] && !dungeon.seen[pos.y][pos.x]) {
+    const isVisible = dungeon.visible[pos.y][pos.x];
+    const isSeen = dungeon.seen[pos.y][pos.x];
+    if (!isVisible && !isSeen) {
       return " ";
     }
+
     const baseTile = tileAt(dungeon, pos);
     let glyph = baseTile?.glyph ?? "#";
-    let color = dungeon.visible[pos.y][pos.x] ? "#e0e0e0" : "#444";
+    let color = baseTile?.walkable ? "#6f7d9b" : "#2f374b";
 
     const entity = [...state.entities.values()].find((e) => e.position.x === pos.x && e.position.y === pos.y);
     if (entity) {
@@ -111,10 +114,12 @@ export class Renderer {
       color = entity.fg;
     }
 
-    if (!dungeon.visible[pos.y][pos.x]) {
-      return `<span style="color:${color};opacity:0.45">${glyph}</span>`;
+    if (!isVisible) {
+      const faded = blend("#0d1018", color, 0.35);
+      return `<span style="color:${faded};opacity:0.55">${glyph}</span>`;
     }
 
+    let highlightBoost = 0;
     for (const [, fov] of Object.entries(state.overlays.monsterFOV)) {
       if (fov[pos.y]?.[pos.x]) {
         color = blend(color, "#ff5555", 0.35);
@@ -125,13 +130,18 @@ export class Renderer {
       const { reticle, path } = state.overlays.aim;
       if (reticle.x === pos.x && reticle.y === pos.y) {
         glyph = state.overlays.aim.mode === "auto" ? "∀" : "*";
-        color = "#ff0";
+        color = "#ffd54f";
+        highlightBoost = 0.35;
       } else if (path.some((p) => p.x === pos.x && p.y === pos.y)) {
         color = "#ffa500";
+        highlightBoost = Math.max(highlightBoost, 0.15);
       }
     }
 
-    return `<span style="color:${color}">${glyph}</span>`;
+    const brightness = dungeon.light[pos.y]?.[pos.x] ?? 0;
+    const litColor = applyLight(color, brightness, 0.25 + highlightBoost);
+
+    return `<span style="color:${litColor}">${glyph}</span>`;
   }
 
   private renderLog(log: GameLogEntry[]): void {
@@ -179,4 +189,13 @@ function makeBar(label: string, cur: number, max: number, color: string): string
       <div style="width:${pct}%; height:100%; background:${color};"></div>
     </div>
   </div>`;
+}
+
+function applyLight(color: string, light: number, min = 0.25): string {
+  const intensity = clamp(min + light * (1 - min), 0, 1);
+  return blend("#0d1018", color, intensity);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

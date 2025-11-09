@@ -135,6 +135,7 @@ export interface Dungeon {
   tiles: Tile[][];
   seen: boolean[][];
   visible: boolean[][];
+  light: number[][];
   biome: BiomeId;
 }
 
