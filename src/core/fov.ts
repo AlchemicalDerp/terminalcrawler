@@ -37,6 +37,8 @@ export function computeFOV(dungeon: Dungeon, origin: Vec2, opts: FOVOptions): FO
 
       const line = traceLine(origin, { x, y });
       let blocked = false;
+      let reachedTarget = false;
+      let prevPoint: Vec2 = origin;
       for (const point of line) {
         if (!inBounds(dungeon, point)) {
           blocked = true;
@@ -49,35 +51,38 @@ export function computeFOV(dungeon: Dungeon, origin: Vec2, opts: FOVOptions): FO
         const stepDist = Math.sqrt(stepDx * stepDx + stepDy * stepDy);
         if (stepDist > radius) break;
 
+        if (!(px === origin.x && py === origin.y) && isDiagonalStep(prevPoint, point)) {
+          const cornerA = { x: point.x, y: prevPoint.y };
+          const cornerB = { x: prevPoint.x, y: point.y };
+          if (cornerOpaque(cornerA, dungeon, opacity) || cornerOpaque(cornerB, dungeon, opacity)) {
+            blocked = true;
+            break;
+          }
+        }
+
         visible[py][px] = true;
         if (stepDist < distanceMap[py][px]) {
           distanceMap[py][px] = stepDist;
         }
 
         if (px === x && py === y) {
+          reachedTarget = true;
           break;
         }
 
         if (!(px === origin.x && py === origin.y)) {
-          const tileOpacity = opacity(point);
+          const tileOpacity = sampleOpacity(point, dungeon, opacity);
           if (tileOpacity >= 1) {
             blocked = true;
             break;
           }
         }
+
+        prevPoint = point;
       }
 
-      if (blocked) {
-        const last = line[line.length - 1];
-        if (last && inBounds(dungeon, last)) {
-          visible[last.y][last.x] = true;
-          const lastDx = last.x - origin.x;
-          const lastDy = last.y - origin.y;
-          const lastDist = Math.sqrt(lastDx * lastDx + lastDy * lastDy);
-          if (lastDist < distanceMap[last.y][last.x]) {
-            distanceMap[last.y][last.x] = lastDist;
-          }
-        }
+      if (!reachedTarget && blocked) {
+        continue;
       }
     }
   }
@@ -113,4 +118,18 @@ function traceLine(start: Vec2, end: Vec2): Vec2[] {
   }
 
   return points;
+}
+
+function isDiagonalStep(prev: Vec2, current: Vec2): boolean {
+  return prev.x !== current.x && prev.y !== current.y;
+}
+
+function cornerOpaque(pos: Vec2, dungeon: Dungeon, opacity: (pos: Vec2) => number): boolean {
+  if (!inBounds(dungeon, pos)) return true;
+  return opacity(pos) >= 1;
+}
+
+function sampleOpacity(pos: Vec2, dungeon: Dungeon, opacity: (pos: Vec2) => number): number {
+  if (!inBounds(dungeon, pos)) return 1;
+  return opacity(pos);
 }

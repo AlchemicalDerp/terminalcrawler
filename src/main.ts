@@ -4,11 +4,12 @@ import { attachInput } from "./core/input";
 import { refreshPlayerAP } from "./core/ap";
 import { addLog } from "./core/state";
 import { reveal, updateMonsterFOV } from "./core/actions";
+import { viewportDungeonSettings } from "./gen/settings";
 
 const app = document.getElementById("app");
 if (!app) throw new Error("Missing app container");
 
-const state = createInitialState();
+const state = createInitialState({ dungeon: viewportDungeonSettings() });
 const renderer = new Renderer({ container: app });
 attachInput(state);
 refreshPlayerAP(state);
