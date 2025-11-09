@@ -258,7 +258,7 @@ function blend(a: string, b: string, t: number): string {
 }
 
 function applyMemoryLight(palette: TilePalette, light: number): string {
-  const memoryIntensity = clamp(0.2 + light * 0.5, 0.2, 0.85);
+  const memoryIntensity = clamp(0.35 + light * 0.6, 0.35, 0.95);
   return blend(palette.hidden, palette.seen, memoryIntensity);
 }
 
@@ -280,8 +280,8 @@ function applyLight(
 }
 
 function memoryBackground(palette: TilePalette, light: number): string {
-  const base = blend(palette.hiddenBg, palette.seenBg, clamp(0.35 + light * 0.4, 0.35, 0.9));
-  return blend(base, palette.litBg, clamp(light * 0.6, 0, 0.65));
+  const base = blend(palette.hiddenBg, palette.seenBg, clamp(0.45 + light * 0.45, 0.45, 0.95));
+  return blend(base, palette.litBg, clamp(light * 0.7, 0, 0.75));
 }
 
 function applyBackgroundLight(palette: TilePalette, light: number, boost = 0): string {

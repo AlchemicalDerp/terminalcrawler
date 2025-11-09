@@ -2,7 +2,7 @@ import { tileAt, inBounds } from "./grid";
 import type { GameState, Vec2 } from "./types";
 import { DEFAULT_ACTION_COSTS, spendAP, spendStamina, canDash, recoverStamina } from "./ap";
 import { computeFOV } from "./fov";
-import { addLog } from "./state";
+import { addLog, ascendFloor } from "./state";
 import { processMonsters } from "../ai/behavior";
 import { refreshPlayerAP } from "./ap";
 import { playerAttack } from "../combat/damage";
@@ -13,27 +13,31 @@ export function movePlayer(state: GameState, delta: Vec2): void {
   if (blockingEntity && blockingEntity.type === "monster") {
     const monster = state.monsters.get(blockingEntity.id);
     if (!monster) return;
-    const weaponCost = state.player.equipped.weapon?.apUse ?? DEFAULT_ACTION_COSTS.attack;
-    if (!spendAP(state, weaponCost)) {
-      addLog(state, { text: "Not enough AP to attack!", color: "#f55" });
-      return;
-    }
     playerAttack(state, monster);
     recoverStamina(state);
-    endPlayerAction(state);
+    endPlayerAction(state, true);
     return;
   }
   if (!canMoveTo(state, target)) {
     addLog(state, { text: "You bump into something.", color: "#888" });
     return;
   }
-  if (!spendAP(state, DEFAULT_ACTION_COSTS.move)) return;
   state.player.position = target;
   const playerEntity = state.entities.get(state.player.entityId);
   if (playerEntity) playerEntity.position = target;
-  reveal(state);
+  const tile = tileAt(state.dungeon, target);
+  const usedExit = tile?.tags?.includes("exit");
+  if (usedExit) {
+    addLog(state, { text: "You descend to a deeper floor...", color: "#9be7ff" });
+    ascendFloor(state);
+    refreshPlayerAP(state);
+    reveal(state);
+    updateMonsterFOV(state);
+  } else {
+    reveal(state);
+  }
   recoverStamina(state);
-  endPlayerAction(state);
+  endPlayerAction(state, true);
 }
 
 export function waitTurn(state: GameState): void {
@@ -92,17 +96,20 @@ export function reveal(state: GameState): void {
   for (let y = 0; y < state.dungeon.height; y++) {
     for (let x = 0; x < state.dungeon.width; x++) {
       const prevLight = state.dungeon.light[y][x];
+      const tile = state.dungeon.tiles[y][x];
       if (result.visible[y][x]) {
         state.dungeon.seen[y][x] = true;
         const dist = result.distance[y][x];
         const brightness = Number.isFinite(dist)
           ? Math.max(0, 1 - dist / (PLAYER_FOV_RADIUS + 0.5))
           : 0;
-        const stabilized = Math.max(brightness, prevLight * 0.6);
+        const stabilized = Math.max(brightness, prevLight * 0.65);
         state.dungeon.light[y][x] = Math.min(1, stabilized);
       } else if (state.dungeon.seen[y][x]) {
-        const memory = Math.max(prevLight * 0.6, 0.18);
-        state.dungeon.light[y][x] = Math.min(memory, 0.4);
+        const baseMemory = !tile?.walkable || tile?.tags?.includes("exit") ? 0.35 : 0.28;
+        const ceiling = tile?.tags?.includes("exit") ? 0.7 : !tile?.walkable ? 0.6 : 0.55;
+        const memory = Math.max(prevLight * 0.7, baseMemory);
+        state.dungeon.light[y][x] = Math.min(memory, ceiling);
       } else {
         state.dungeon.light[y][x] = 0;
       }
@@ -118,8 +125,8 @@ export function updateMonsterFOV(state: GameState): void {
   state.overlays.monsterFOV = overlays;
 }
 
-export function endPlayerAction(state: GameState): void {
-  if (state.playerTurn.ap > 0) return;
+export function endPlayerAction(state: GameState, force = false): void {
+  if (!force && state.playerTurn.ap > 0) return;
   processMonsters(state);
   refreshPlayerAP(state);
   updateMonsterFOV(state);

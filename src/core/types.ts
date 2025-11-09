@@ -1,3 +1,5 @@
+import type { RoomsAndMazesSettings } from "../gen/settings";
+
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary" | "cursed";
 
 export interface ReforgeMod {
@@ -167,6 +169,7 @@ export interface GameState {
   merchantSchedule: MerchantSchedule;
   playerTurn: { ap: number };
   playerMeta: { turnsSinceDash: number };
+  dungeonSettings?: Partial<RoomsAndMazesSettings>;
 }
 
 export interface OverlayState {
