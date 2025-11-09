@@ -32,6 +32,7 @@ export class Renderer {
     this.mapEl.style.padding = "16px";
     this.mapEl.style.fontSize = "16px";
     this.mapEl.style.lineHeight = "16px";
+    this.mapEl.style.fontFamily = "'Fira Code', 'Source Code Pro', Menlo, Monaco, Consolas, 'Liberation Mono', monospace";
     this.mapEl.style.overflow = "auto";
     this.mapEl.style.background = "#0d1018";
     this.mapEl.style.border = "1px solid #1f2535";
@@ -104,7 +105,9 @@ export class Renderer {
     const palette = getTilePalette(tile);
 
     if (!isVisible && !isSeen) {
-      return `<span style="color:${palette.hidden}"> </span>`;
+      const bg = palette.hiddenBg;
+      const fg = palette.hidden;
+      return `<span style="display:inline-block;width:1ch;color:${fg};background:${bg};"> </span>`;
     }
 
     let glyph = tile?.glyph ?? "#";
@@ -112,8 +115,8 @@ export class Renderer {
 
     if (!isVisible) {
       const memoryColor = applyMemoryLight(palette, brightness);
-      const memoryOpacity = clamp(0.45 + brightness * 0.3, 0.35, 0.75);
-      return `<span style="color:${memoryColor};opacity:${memoryOpacity.toFixed(2)}">${glyph}</span>`;
+      const memoryBg = memoryBackground(palette, brightness);
+      return `<span style="display:inline-block;width:1ch;color:${memoryColor};background:${memoryBg};">${glyph}</span>`;
     }
 
     let color = palette.lit;
@@ -148,8 +151,9 @@ export class Renderer {
     }
 
     const litColor = applyLight(color, palette, brightness, highlightBoost, useEntityColor);
+    const bgColor = applyBackgroundLight(palette, brightness, highlightBoost);
 
-    return `<span style="color:${litColor}">${glyph}</span>`;
+    return `<span style="display:inline-block;width:1ch;color:${litColor};background:${bgColor};">${glyph}</span>`;
   }
 
   private renderLog(log: GameLogEntry[]): void {
@@ -192,19 +196,50 @@ interface TilePalette {
   hidden: string;
   seen: string;
   lit: string;
+  hiddenBg: string;
+  seenBg: string;
+  litBg: string;
 }
 
 function getTilePalette(tile?: Tile | null): TilePalette {
   if (!tile) {
-    return { hidden: "#05070d", seen: "#172233", lit: "#d9e6ff" };
+    return {
+      hidden: "#05070d",
+      seen: "#172233",
+      lit: "#d9e6ff",
+      hiddenBg: "#02040a",
+      seenBg: "#0e1623",
+      litBg: "#1f2d46"
+    };
   }
   if (tile.glyph === ">") {
-    return { hidden: "#05070d", seen: "#2a1f18", lit: "#ffce73" };
+    return {
+      hidden: "#05070d",
+      seen: "#2a1f18",
+      lit: "#ffce73",
+      hiddenBg: "#130d05",
+      seenBg: "#2d1f0e",
+      litBg: "#4a2d10"
+    };
   }
   if (!tile.walkable) {
-    return { hidden: "#05070d", seen: "#111827", lit: "#5c6883" };
+    return {
+      hidden: "#05070d",
+      seen: "#111827",
+      lit: "#5c6883",
+      hiddenBg: "#05070d",
+      seenBg: "#0f1523",
+      litBg: "#242c3f"
+    };
   }
-  return { hidden: "#05070d", seen: "#1a2435", lit: "#d7e4ff" };
+  return {
+    hidden: "#05070d",
+    seen: "#1a2435",
+    lit: "#d7e4ff",
+    hiddenBg: "#02040a",
+    seenBg: "#111b2b",
+    litBg: "#243352"
+  };
 }
 
 function blend(a: string, b: string, t: number): string {
@@ -223,7 +258,7 @@ function blend(a: string, b: string, t: number): string {
 }
 
 function applyMemoryLight(palette: TilePalette, light: number): string {
-  const memoryIntensity = clamp(0.2 + light * 0.45, 0, 0.7);
+  const memoryIntensity = clamp(0.2 + light * 0.5, 0.2, 0.85);
   return blend(palette.hidden, palette.seen, memoryIntensity);
 }
 
@@ -242,4 +277,15 @@ function applyLight(
   }
   const focus = blend(sheen, color, clamp(0.55 + intensity * 0.45, 0, 1));
   return blend(focus, "#f8fbff", intensity * 0.2);
+}
+
+function memoryBackground(palette: TilePalette, light: number): string {
+  const base = blend(palette.hiddenBg, palette.seenBg, clamp(0.35 + light * 0.4, 0.35, 0.9));
+  return blend(base, palette.litBg, clamp(light * 0.6, 0, 0.65));
+}
+
+function applyBackgroundLight(palette: TilePalette, light: number, boost = 0): string {
+  const intensity = clamp(light + boost, 0, 1);
+  const warmed = blend(palette.hiddenBg, palette.seenBg, clamp(0.3 + intensity * 0.5, 0.3, 0.95));
+  return blend(warmed, palette.litBg, clamp(intensity * 0.85, 0, 1));
 }
