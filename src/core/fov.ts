@@ -16,98 +16,101 @@ export interface FOVOptions {
 export function computeFOV(dungeon: Dungeon, origin: Vec2, opts: FOVOptions): FOVResult {
   const visible = createGrid(dungeon.width, dungeon.height, () => false);
   const distanceMap = createGrid(dungeon.width, dungeon.height, () => Number.POSITIVE_INFINITY);
+  const radius = Math.max(0, opts.radius);
+  const opacity = opts.opacity ?? ((pos: Vec2) => (tileAt(dungeon, pos)?.blocksSight ? 1 : 0));
+
   visible[origin.y][origin.x] = true;
   distanceMap[origin.y][origin.x] = 0;
 
-  const radius = opts.radius;
-  const opacity = opts.opacity ?? ((pos: Vec2) => (tileAt(dungeon, pos)?.blocksSight ? 1 : 0));
+  const minY = Math.max(0, origin.y - radius);
+  const maxY = Math.min(dungeon.height - 1, origin.y + radius);
+  const minX = Math.max(0, origin.x - radius);
+  const maxX = Math.min(dungeon.width - 1, origin.x + radius);
 
-  for (let oct = 0; oct < 8; oct++) {
-    castLight(
-      dungeon,
-      origin,
-      1,
-      1.0,
-      0.0,
-      radius,
-      mult[oct][0],
-      mult[oct][1],
-      mult[oct][2],
-      mult[oct][3],
-      visible,
-      distanceMap,
-      opacity
-    );
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (x === origin.x && y === origin.y) continue;
+      const dx = x - origin.x;
+      const dy = y - origin.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > radius) continue;
+
+      const line = traceLine(origin, { x, y });
+      let blocked = false;
+      for (const point of line) {
+        if (!inBounds(dungeon, point)) {
+          blocked = true;
+          break;
+        }
+        const px = point.x;
+        const py = point.y;
+        const stepDx = px - origin.x;
+        const stepDy = py - origin.y;
+        const stepDist = Math.sqrt(stepDx * stepDx + stepDy * stepDy);
+        if (stepDist > radius) break;
+
+        visible[py][px] = true;
+        if (stepDist < distanceMap[py][px]) {
+          distanceMap[py][px] = stepDist;
+        }
+
+        if (px === x && py === y) {
+          break;
+        }
+
+        if (!(px === origin.x && py === origin.y)) {
+          const tileOpacity = opacity(point);
+          if (tileOpacity >= 1) {
+            blocked = true;
+            break;
+          }
+        }
+      }
+
+      if (blocked) {
+        const last = line[line.length - 1];
+        if (last && inBounds(dungeon, last)) {
+          visible[last.y][last.x] = true;
+          const lastDx = last.x - origin.x;
+          const lastDy = last.y - origin.y;
+          const lastDist = Math.sqrt(lastDx * lastDx + lastDy * lastDy);
+          if (lastDist < distanceMap[last.y][last.x]) {
+            distanceMap[last.y][last.x] = lastDist;
+          }
+        }
+      }
+    }
   }
 
   return { visible, distance: distanceMap };
 }
 
-const mult = [
-  [1, 0, 0, 1],
-  [0, 1, 1, 0],
-  [0, -1, 1, 0],
-  [-1, 0, 0, 1],
-  [-1, 0, 0, -1],
-  [0, -1, -1, 0],
-  [0, 1, -1, 0],
-  [1, 0, 0, -1]
-] as const;
+function traceLine(start: Vec2, end: Vec2): Vec2[] {
+  const points: Vec2[] = [];
+  let x0 = start.x;
+  let y0 = start.y;
+  const x1 = end.x;
+  const y1 = end.y;
 
-function castLight(
-  dungeon: Dungeon,
-  origin: Vec2,
-  row: number,
-  start: number,
-  end: number,
-  radius: number,
-  xx: number,
-  xy: number,
-  yx: number,
-  yy: number,
-  visible: FOVMap,
-  distanceMap: number[][],
-  opacity: (pos: Vec2) => number
-): void {
-  if (start < end) return;
-  const radiusSq = radius * radius;
-  for (let distance = row; distance <= radius; distance++) {
-    let newStart = 0;
-    let blocked = false;
-    for (let delta = -distance; delta <= 0; delta++) {
-      const lSlope = (delta - 0.5) / (distance + 0.5);
-      const rSlope = (delta + 0.5) / (distance - 0.5);
-      if (start < rSlope) continue;
-      if (end > lSlope) break;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
 
-      const x = origin.x + delta * xx + distance * xy;
-      const y = origin.y + delta * yx + distance * yy;
-      const pos = { x, y };
-      if (!inBounds(dungeon, pos)) continue;
-
-      const distanceSq = (delta * delta) + (distance * distance);
-      if (distanceSq <= radiusSq) {
-        visible[y][x] = true;
-        const dist = Math.sqrt(distanceSq);
-        if (dist < distanceMap[y][x]) {
-          distanceMap[y][x] = dist;
-        }
-      }
-
-      const tileOpacity = opacity(pos);
-      if (blocked) {
-        if (tileOpacity === 1) {
-          newStart = rSlope;
-          continue;
-        }
-        blocked = false;
-        start = newStart;
-      } else if (tileOpacity === 1 && distance < radius) {
-        blocked = true;
-        castLight(dungeon, origin, distance + 1, start, lSlope, radius, xx, xy, yx, yy, visible, distanceMap, opacity);
-        newStart = rSlope;
-      }
+  while (true) {
+    points.push({ x: x0, y: y0 });
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
     }
-    if (blocked) break;
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
   }
+
+  return points;
 }
