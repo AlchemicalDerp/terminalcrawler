@@ -1,0 +1,291 @@
+import type { GameLogEntry, GameState, Tile, Vec2 } from "../core/types";
+import { tileAt } from "../core/grid";
+
+export interface RendererOptions {
+  container: HTMLElement;
+}
+
+export class Renderer {
+  private mapEl: HTMLElement;
+  private leftPanel: HTMLElement;
+  private logEl: HTMLElement;
+  private quickbarEl: HTMLElement;
+
+  constructor(opts: RendererOptions) {
+    const { container } = opts;
+    container.innerHTML = "";
+    container.style.display = "grid";
+    container.style.gridTemplateColumns = "240px 1fr 280px";
+    container.style.flex = "1";
+    container.style.gap = "12px";
+    container.style.padding = "12px";
+
+    this.leftPanel = document.createElement("div");
+    this.leftPanel.style.padding = "8px";
+    this.leftPanel.style.background = "#141824";
+    this.leftPanel.style.border = "1px solid #1f2535";
+    this.leftPanel.style.borderRadius = "8px";
+    container.appendChild(this.leftPanel);
+
+    this.mapEl = document.createElement("pre");
+    this.mapEl.style.margin = "0";
+    this.mapEl.style.padding = "16px";
+    this.mapEl.style.fontSize = "16px";
+    this.mapEl.style.lineHeight = "16px";
+    this.mapEl.style.fontFamily = "'Fira Code', 'Source Code Pro', Menlo, Monaco, Consolas, 'Liberation Mono', monospace";
+    this.mapEl.style.overflow = "auto";
+    this.mapEl.style.background = "#0d1018";
+    this.mapEl.style.border = "1px solid #1f2535";
+    this.mapEl.style.borderRadius = "8px";
+    container.appendChild(this.mapEl);
+
+    const rightWrapper = document.createElement("div");
+    rightWrapper.style.display = "flex";
+    rightWrapper.style.flexDirection = "column";
+    rightWrapper.style.background = "#141824";
+    rightWrapper.style.padding = "8px";
+    rightWrapper.style.border = "1px solid #1f2535";
+    rightWrapper.style.borderRadius = "8px";
+
+    this.quickbarEl = document.createElement("div");
+    this.quickbarEl.style.marginBottom = "8px";
+    rightWrapper.appendChild(this.quickbarEl);
+
+    this.logEl = document.createElement("div");
+    this.logEl.style.flex = "1";
+    this.logEl.style.overflowY = "auto";
+    this.logEl.style.fontSize = "13px";
+    rightWrapper.appendChild(this.logEl);
+
+    container.appendChild(rightWrapper);
+  }
+
+  render(state: GameState): void {
+    this.renderStats(state);
+    this.renderMap(state);
+    this.renderLog(state.log);
+    this.renderQuickbar(state);
+  }
+
+  private renderStats(state: GameState): void {
+    const p = state.player;
+    const ap = state.playerTurn.ap;
+    const mana = p.mana ? makeBar("Mana", p.mana.cur, p.mana.max, "#8b7bff") : "";
+    const statusLines = [
+      `<div style="color:#9fb3ff; font-weight:600; margin-bottom:8px;">Status</div>`,
+      makeBar("HP", p.hp.cur, p.hp.max, "#ff5d73"),
+      makeBar("AP", ap, p.apBase, "#54b9ff"),
+      makeBar("Stamina", p.stamina.cur, p.stamina.max, "#58d68d"),
+      mana,
+      `<div style="margin-top:8px; font-size:13px; color:#c4cad9;">Class: ${p.cls}<br/>Floor: ${state.floor}</div>`
+    ]
+      .filter(Boolean)
+      .join("");
+    const statsLine = `<div style="margin-top:12px; font-size:12px; color:#8a92a6;">STR ${p.stats.STR} • DEX ${p.stats.DEX} • INT ${p.stats.INT}<br/>VIT ${p.stats.VIT} • WIS ${p.stats.WIS} • LCK ${p.stats.LCK}</div>`;
+    this.leftPanel.innerHTML = statusLines + statsLine;
+  }
+
+  private renderMap(state: GameState): void {
+    const rows: string[] = [];
+    for (let y = 0; y < state.dungeon.height; y++) {
+      let row = "";
+      for (let x = 0; x < state.dungeon.width; x++) {
+        row += this.computeGlyph(state, { x, y });
+      }
+      rows.push(row);
+    }
+    this.mapEl.innerHTML = rows.join("\n");
+  }
+
+  private computeGlyph(state: GameState, pos: Vec2): string {
+    const { dungeon } = state;
+    const isVisible = dungeon.visible[pos.y][pos.x];
+    const isSeen = dungeon.seen[pos.y][pos.x];
+    const tile = tileAt(dungeon, pos);
+    const palette = getTilePalette(tile);
+
+    if (!isVisible && !isSeen) {
+      const bg = palette.hiddenBg;
+      const fg = palette.hidden;
+      return `<span style="display:inline-block;width:1ch;color:${fg};background:${bg};"> </span>`;
+    }
+
+    let glyph = tile?.glyph ?? "#";
+    const brightness = clamp(dungeon.light[pos.y]?.[pos.x] ?? 0, 0, 1);
+
+    if (!isVisible) {
+      const memoryColor = applyMemoryLight(palette, brightness);
+      const memoryBg = memoryBackground(palette, brightness);
+      return `<span style="display:inline-block;width:1ch;color:${memoryColor};background:${memoryBg};">${glyph}</span>`;
+    }
+
+    let color = palette.lit;
+    let useEntityColor = false;
+    const entity = [...state.entities.values()].find((e) => e.position.x === pos.x && e.position.y === pos.y);
+    if (entity) {
+      glyph = entity.glyph;
+      color = entity.fg;
+      useEntityColor = true;
+    }
+
+    let highlightBoost = 0;
+    for (const [, fov] of Object.entries(state.overlays.monsterFOV)) {
+      if (fov[pos.y]?.[pos.x]) {
+        color = blend(color, "#ff5555", 0.35);
+        useEntityColor = true;
+      }
+    }
+
+    if (state.overlays.aim?.active) {
+      const { reticle, path } = state.overlays.aim;
+      if (reticle.x === pos.x && reticle.y === pos.y) {
+        glyph = state.overlays.aim.mode === "auto" ? "∀" : "*";
+        color = "#ffd54f";
+        highlightBoost = 0.25;
+        useEntityColor = true;
+      } else if (path.some((p) => p.x === pos.x && p.y === pos.y)) {
+        color = "#ffa500";
+        highlightBoost = Math.max(highlightBoost, 0.12);
+        useEntityColor = true;
+      }
+    }
+
+    const litColor = applyLight(color, palette, brightness, highlightBoost, useEntityColor);
+    const bgColor = applyBackgroundLight(palette, brightness, highlightBoost);
+
+    return `<span style="display:inline-block;width:1ch;color:${litColor};background:${bgColor};">${glyph}</span>`;
+  }
+
+  private renderLog(log: GameLogEntry[]): void {
+    const entries = log
+      .slice(-15)
+      .map((entry) => `<div style="color:${entry.color ?? "#ccc"}; padding:2px 0;">${entry.text}</div>`)
+      .join("");
+    this.logEl.innerHTML = `<div style="color:#9fb3ff; font-weight:600; margin-bottom:4px;">Log</div>${entries}`;
+    this.logEl.scrollTop = this.logEl.scrollHeight;
+  }
+
+  private renderQuickbar(state: GameState): void {
+    const slots = Array.from({ length: 4 }, (_, idx) => {
+      const itemId = state.player.quickbar[idx];
+      const item = state.player.inventory.find((i) => i.id === itemId);
+      const label = item ? item.name : "(empty)";
+      return `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:13px; color:#c4cad9;"><span style="display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center; background:#1f2535; border-radius:4px; color:#9fb3ff; font-size:12px;">${idx + 1}</span>${label}</div>`;
+    }).join("");
+    this.quickbarEl.innerHTML = `<div style="color:#9fb3ff; font-weight:600; margin-bottom:6px;">Quickbar</div>${slots}`;
+  }
+}
+
+function makeBar(label: string, cur: number, max: number, color: string): string {
+  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((cur / max) * 100))) : 0;
+  return `<div style="margin-bottom:6px;">
+    <div style="font-size:12px; color:#c4cad9; margin-bottom:2px; display:flex; justify-content:space-between;">
+      <span>${label}</span><span>${cur}/${max}</span>
+    </div>
+    <div style="height:10px; background:#1f2535; border-radius:4px; overflow:hidden;">
+      <div style="width:${pct}%; height:100%; background:${color};"></div>
+    </div>
+  </div>`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+interface TilePalette {
+  hidden: string;
+  seen: string;
+  lit: string;
+  hiddenBg: string;
+  seenBg: string;
+  litBg: string;
+}
+
+function getTilePalette(tile?: Tile | null): TilePalette {
+  if (!tile) {
+    return {
+      hidden: "#05070d",
+      seen: "#172233",
+      lit: "#d9e6ff",
+      hiddenBg: "#02040a",
+      seenBg: "#0e1623",
+      litBg: "#1f2d46"
+    };
+  }
+  if (tile.glyph === ">") {
+    return {
+      hidden: "#05070d",
+      seen: "#2a1f18",
+      lit: "#ffce73",
+      hiddenBg: "#130d05",
+      seenBg: "#2d1f0e",
+      litBg: "#4a2d10"
+    };
+  }
+  if (!tile.walkable) {
+    return {
+      hidden: "#05070d",
+      seen: "#111827",
+      lit: "#5c6883",
+      hiddenBg: "#05070d",
+      seenBg: "#0f1523",
+      litBg: "#242c3f"
+    };
+  }
+  return {
+    hidden: "#05070d",
+    seen: "#1a2435",
+    lit: "#d7e4ff",
+    hiddenBg: "#02040a",
+    seenBg: "#111b2b",
+    litBg: "#243352"
+  };
+}
+
+function blend(a: string, b: string, t: number): string {
+  const ah = parseInt(a.replace("#", ""), 16);
+  const bh = parseInt(b.replace("#", ""), 16);
+  const ar = (ah >> 16) & 0xff;
+  const ag = (ah >> 8) & 0xff;
+  const ab = ah & 0xff;
+  const br = (bh >> 16) & 0xff;
+  const bg = (bh >> 8) & 0xff;
+  const bb = bh & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bch = Math.round(ab + (bb - ab) * t);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + bch).toString(16).slice(1)}`;
+}
+
+function applyMemoryLight(palette: TilePalette, light: number): string {
+  const memoryIntensity = clamp(0.35 + light * 0.6, 0.35, 0.95);
+  return blend(palette.hidden, palette.seen, memoryIntensity);
+}
+
+function applyLight(
+  color: string,
+  palette: TilePalette,
+  light: number,
+  boost = 0,
+  emphasiseEntity = false
+): string {
+  const intensity = clamp(light + boost, 0, 1);
+  const tileTone = blend(palette.seen, palette.lit, clamp(0.35 + intensity * 0.65, 0, 1));
+  const sheen = blend(tileTone, "#f5f9ff", intensity * 0.25);
+  if (!emphasiseEntity) {
+    return sheen;
+  }
+  const focus = blend(sheen, color, clamp(0.55 + intensity * 0.45, 0, 1));
+  return blend(focus, "#f8fbff", intensity * 0.2);
+}
+
+function memoryBackground(palette: TilePalette, light: number): string {
+  const base = blend(palette.hiddenBg, palette.seenBg, clamp(0.45 + light * 0.45, 0.45, 0.95));
+  return blend(base, palette.litBg, clamp(light * 0.7, 0, 0.75));
+}
+
+function applyBackgroundLight(palette: TilePalette, light: number, boost = 0): string {
+  const intensity = clamp(light + boost, 0, 1);
+  const warmed = blend(palette.hiddenBg, palette.seenBg, clamp(0.3 + intensity * 0.5, 0.3, 0.95));
+  return blend(warmed, palette.litBg, clamp(intensity * 0.85, 0, 1));
+}

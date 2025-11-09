@@ -1,0 +1,21 @@
+{
+  "name": "terminalcrawler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "lodash-es": "4.17.21"
+  },
+  "devDependencies": {
+    "@types/lodash-es": "4.17.12",
+    "typescript": "5.4.5",
+    "vite": "5.2.10",
+    "vitest": "1.4.0"
+  }
+}
