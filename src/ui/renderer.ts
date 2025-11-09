@@ -15,27 +15,36 @@ export class Renderer {
     const { container } = opts;
     container.innerHTML = "";
     container.style.display = "grid";
-    container.style.gridTemplateColumns = "220px 1fr 260px";
+    container.style.gridTemplateColumns = "240px 1fr 280px";
     container.style.flex = "1";
+    container.style.gap = "12px";
+    container.style.padding = "12px";
 
     this.leftPanel = document.createElement("div");
     this.leftPanel.style.padding = "8px";
-    this.leftPanel.style.background = "rgba(10, 10, 20, 0.85)";
+    this.leftPanel.style.background = "#141824";
+    this.leftPanel.style.border = "1px solid #1f2535";
+    this.leftPanel.style.borderRadius = "8px";
     container.appendChild(this.leftPanel);
 
     this.mapEl = document.createElement("pre");
     this.mapEl.style.margin = "0";
-    this.mapEl.style.padding = "12px";
+    this.mapEl.style.padding = "16px";
     this.mapEl.style.fontSize = "16px";
     this.mapEl.style.lineHeight = "16px";
     this.mapEl.style.overflow = "auto";
+    this.mapEl.style.background = "#0d1018";
+    this.mapEl.style.border = "1px solid #1f2535";
+    this.mapEl.style.borderRadius = "8px";
     container.appendChild(this.mapEl);
 
     const rightWrapper = document.createElement("div");
     rightWrapper.style.display = "flex";
     rightWrapper.style.flexDirection = "column";
-    rightWrapper.style.background = "rgba(10, 10, 20, 0.85)";
+    rightWrapper.style.background = "#141824";
     rightWrapper.style.padding = "8px";
+    rightWrapper.style.border = "1px solid #1f2535";
+    rightWrapper.style.borderRadius = "8px";
 
     this.quickbarEl = document.createElement("div");
     this.quickbarEl.style.marginBottom = "8px";
@@ -59,10 +68,20 @@ export class Renderer {
 
   private renderStats(state: GameState): void {
     const p = state.player;
-    const mana = p.mana ? `\nMana: ${p.mana.cur}/${p.mana.max}` : "";
-    const staminaLine = `\nStamina: ${p.stamina.cur}/${p.stamina.max}`;
     const ap = state.playerTurn.ap;
-    this.leftPanel.innerText = `Class: ${p.cls}\nHP: ${p.hp.cur}/${p.hp.max}\nAP: ${ap}/${p.apBase}${staminaLine}${mana}\nFloor: ${state.floor}`;
+    const mana = p.mana ? makeBar("Mana", p.mana.cur, p.mana.max, "#8b7bff") : "";
+    const statusLines = [
+      `<div style="color:#9fb3ff; font-weight:600; margin-bottom:8px;">Status</div>`,
+      makeBar("HP", p.hp.cur, p.hp.max, "#ff5d73"),
+      makeBar("AP", ap, p.apBase, "#54b9ff"),
+      makeBar("Stamina", p.stamina.cur, p.stamina.max, "#58d68d"),
+      mana,
+      `<div style="margin-top:8px; font-size:13px; color:#c4cad9;">Class: ${p.cls}<br/>Floor: ${state.floor}</div>`
+    ]
+      .filter(Boolean)
+      .join("");
+    const statsLine = `<div style="margin-top:12px; font-size:12px; color:#8a92a6;">STR ${p.stats.STR} • DEX ${p.stats.DEX} • INT ${p.stats.INT}<br/>VIT ${p.stats.VIT} • WIS ${p.stats.WIS} • LCK ${p.stats.LCK}</div>`;
+    this.leftPanel.innerHTML = statusLines + statsLine;
   }
 
   private renderMap(state: GameState): void {
@@ -116,10 +135,11 @@ export class Renderer {
   }
 
   private renderLog(log: GameLogEntry[]): void {
-    this.logEl.innerHTML = log
+    const entries = log
       .slice(-15)
-      .map((entry) => `<div style="color:${entry.color ?? "#ccc"}">${entry.text}</div>`)
+      .map((entry) => `<div style="color:${entry.color ?? "#ccc"}; padding:2px 0;">${entry.text}</div>`)
       .join("");
+    this.logEl.innerHTML = `<div style="color:#9fb3ff; font-weight:600; margin-bottom:4px;">Log</div>${entries}`;
     this.logEl.scrollTop = this.logEl.scrollHeight;
   }
 
@@ -127,12 +147,10 @@ export class Renderer {
     const slots = Array.from({ length: 4 }, (_, idx) => {
       const itemId = state.player.quickbar[idx];
       const item = state.player.inventory.find((i) => i.id === itemId);
-      if (!item) {
-        return `<div>${idx + 1}: (empty)</div>`;
-      }
-      return `<div>${idx + 1}: ${item.name}</div>`;
-    });
-    this.quickbarEl.innerHTML = `<strong>Quickbar</strong>${slots.join("")}`;
+      const label = item ? item.name : "(empty)";
+      return `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:13px; color:#c4cad9;"><span style="display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center; background:#1f2535; border-radius:4px; color:#9fb3ff; font-size:12px;">${idx + 1}</span>${label}</div>`;
+    }).join("");
+    this.quickbarEl.innerHTML = `<div style="color:#9fb3ff; font-weight:600; margin-bottom:6px;">Quickbar</div>${slots}`;
   }
 }
 
@@ -149,4 +167,16 @@ function blend(a: string, b: string, t: number): string {
   const g = Math.round(ag + (bg - ag) * t);
   const bch = Math.round(ab + (bb - ab) * t);
   return `#${((1 << 24) + (r << 16) + (g << 8) + bch).toString(16).slice(1)}`;
+}
+
+function makeBar(label: string, cur: number, max: number, color: string): string {
+  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((cur / max) * 100))) : 0;
+  return `<div style="margin-bottom:6px;">
+    <div style="font-size:12px; color:#c4cad9; margin-bottom:2px; display:flex; justify-content:space-between;">
+      <span>${label}</span><span>${cur}/${max}</span>
+    </div>
+    <div style="height:10px; background:#1f2535; border-radius:4px; overflow:hidden;">
+      <div style="width:${pct}%; height:100%; background:${color};"></div>
+    </div>
+  </div>`;
 }

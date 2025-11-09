@@ -1,6 +1,7 @@
 import type { GameState } from "./types";
 import { addLog } from "./state";
-import { DEFAULT_ACTION_COSTS, spendAP } from "./ap";
+import { DEFAULT_ACTION_COSTS, spendAP, recoverStamina } from "./ap";
+import { endPlayerAction } from "./actions";
 
 export function useQuickbar(state: GameState, index: number): void {
   const id = state.player.quickbar[index];
@@ -25,4 +26,6 @@ export function useQuickbar(state: GameState, index: number): void {
     state.player.hp.cur = Math.min(state.player.hp.max, state.player.hp.cur + 7);
     addLog(state, { text: "A surge of vitality!", color: "#0f0" });
   }
+  recoverStamina(state);
+  endPlayerAction(state);
 }

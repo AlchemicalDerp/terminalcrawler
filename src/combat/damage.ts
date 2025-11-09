@@ -1,7 +1,7 @@
 import type { GameState, Monster } from "../core/types";
 import { addLog } from "../core/state";
 
-export function playerAttack(state: GameState, monster: Monster): void {
+export function playerAttack(state: GameState, monster: Monster): boolean {
   const weapon = state.player.equipped.weapon;
   const baseDamage = (weapon?.damage ?? 1) + (state.player.stats.STR - 5) / 2;
   const damage = Math.max(1, Math.floor(baseDamage) - monster.dr);
@@ -11,7 +11,10 @@ export function playerAttack(state: GameState, monster: Monster): void {
     state.entities.delete(monster.id);
     state.monsters.delete(monster.id);
     addLog(state, { text: `${monster.name} is defeated.`, color: "#0f0" });
+    delete state.overlays.monsterFOV[monster.id];
+    return true;
   }
+  return false;
 }
 
 export function monsterAttack(state: GameState, monster: Monster): void {
