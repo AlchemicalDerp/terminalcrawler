@@ -91,13 +91,18 @@ export function reveal(state: GameState): void {
   state.dungeon.visible = result.visible;
   for (let y = 0; y < state.dungeon.height; y++) {
     for (let x = 0; x < state.dungeon.width; x++) {
+      const prevLight = state.dungeon.light[y][x];
       if (result.visible[y][x]) {
         state.dungeon.seen[y][x] = true;
         const dist = result.distance[y][x];
         const brightness = Number.isFinite(dist)
           ? Math.max(0, 1 - dist / (PLAYER_FOV_RADIUS + 0.5))
           : 0;
-        state.dungeon.light[y][x] = brightness;
+        const stabilized = Math.max(brightness, prevLight * 0.6);
+        state.dungeon.light[y][x] = Math.min(1, stabilized);
+      } else if (state.dungeon.seen[y][x]) {
+        const memory = Math.max(prevLight * 0.6, 0.18);
+        state.dungeon.light[y][x] = Math.min(memory, 0.4);
       } else {
         state.dungeon.light[y][x] = 0;
       }
