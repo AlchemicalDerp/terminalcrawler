@@ -3,7 +3,7 @@ import { generateDungeon } from "../gen/dungeon";
 
 describe("Generation safety", () => {
   it("produces safe spawn rooms", () => {
-    const { dungeon, spawn } = generateDungeon(60, 40, "seed");
+    const { dungeon, spawn } = generateDungeon("seed");
     expect(dungeon.tiles[spawn.y][spawn.x].walkable).toBe(true);
   });
 });

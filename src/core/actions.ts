@@ -84,7 +84,7 @@ function canMoveTo(state: GameState, pos: Vec2): boolean {
   return true;
 }
 
-const PLAYER_FOV_RADIUS = 9;
+const PLAYER_FOV_RADIUS = 10;
 
 export function reveal(state: GameState): void {
   const result = computeFOV(state.dungeon, state.player.position, { radius: PLAYER_FOV_RADIUS });

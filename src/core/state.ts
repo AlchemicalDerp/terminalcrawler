@@ -1,4 +1,5 @@
 import { generateDungeon } from "../gen/dungeon";
+import type { RoomsAndMazesSettings } from "../gen/settings";
 import type { GameState, GameLogEntry, Entity, Monster } from "./types";
 import { SeededPRNG } from "./prng";
 import { createStartingPlayer } from "../data/classes";
@@ -9,12 +10,13 @@ let entityCounter = 0;
 
 export interface GameOptions {
   seed?: string;
+  dungeon?: Partial<RoomsAndMazesSettings>;
 }
 
 export function createInitialState(opts: GameOptions = {}): GameState {
   const seed = opts.seed ?? `${Date.now()}`;
   const prng = new SeededPRNG(seed);
-  const { dungeon, spawn, biome } = generateDungeon(60, 40, seed);
+  const { dungeon, spawn, biome } = generateDungeon(seed, opts.dungeon);
 
   const playerState = createStartingPlayer("Warrior");
   playerState.apBase = apForLevel(playerState.level);
